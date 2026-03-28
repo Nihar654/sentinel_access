@@ -35,3 +35,4 @@ class AuditLogDB(Base):
     confidence      = Column(Integer, nullable=False)
     audit_flags     = Column(JSON, default=[])
     created_at      = Column(DateTime, server_default=func.now())
+    self_audit_result = Column(JSON, nullable = True)

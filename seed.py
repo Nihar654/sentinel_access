@@ -2,6 +2,7 @@ from database import engine, SessionLocal
 from db_models import Base, UserDB, PolicyDB
 
 def seed():
+    Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
 
