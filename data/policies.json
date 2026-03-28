@@ -1,0 +1,51 @@
+{
+    "resource_policies": {
+        "classified_intel": {
+            "min_clearance": 3,
+            "required_roles": [
+                "intel_viewer",
+                "commander"
+            ],
+            "required_mission": true
+        },
+        "strike_orders": {
+            "min_clearance": 4,
+            "required_roles": [
+                "commander"
+            ],
+            "required_mission": true
+        },
+        "personnel_records": {
+            "min_clearance": 2,
+            "required_roles": [
+                "commander",
+                "analyst"
+            ],
+            "required_mission": false
+        }
+    },
+    "prompt_risk_keywords": {
+        "high": [
+            "launch",
+            "strike",
+            "destroy",
+            "override",
+            "disable",
+            "bypass"
+        ],
+        "medium": [
+            "access",
+            "retrieve",
+            "coordinates",
+            "location",
+            "identity"
+        ],
+        "low": [
+            "list",
+            "show",
+            "summarize",
+            "explain",
+            "status"
+        ]
+    }
+}

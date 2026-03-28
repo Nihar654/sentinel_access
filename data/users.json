@@ -1,0 +1,38 @@
+{
+    "U001": {
+        "user_id": "U001",
+        "name": "Col. Arjun Mehta",
+        "rank": "Colonel",
+        "clearance_level": 4,
+        "assigned_missions": [
+            "OPERATION_SKYWATCH",
+            "OPERATION_DAWNSTRIKE"
+        ],
+        "roles": [
+            "commander",
+            "intel_viewer"
+        ]
+    },
+    "U002": {
+        "user_id": "U002",
+        "name": "Lt. Priya Nair",
+        "rank": "Lieutenant",
+        "clearance_level": 2,
+        "assigned_missions": [
+            "OPERATION_SKYWATCH"
+        ],
+        "roles": [
+            "field_agent"
+        ]
+    },
+    "U003": {
+        "user_id": "U003",
+        "name": "Civ. Ravi Shankar",
+        "rank": "Civilian",
+        "clearance_level": 1,
+        "assigned_missions": [],
+        "roles": [
+            "analyst"
+        ]
+    }
+}
