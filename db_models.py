@@ -36,3 +36,12 @@ class AuditLogDB(Base):
     audit_flags     = Column(JSON, default=[])
     created_at      = Column(DateTime, server_default=func.now())
     self_audit_result = Column(JSON, nullable = True)
+    expected_decision = Column(String, nullable = True)
+
+class BlacklistDB(Base):
+    __tablename__ = "blacklist"
+
+    user_id     = Column(String, primary_key=True, index=True)
+    strike_count = Column(Integer, default=0)
+    blacklisted = Column(Integer, default=0)  # 0 = False, 1 = True
+    updated_at  = Column(DateTime, server_default=func.now(), onupdate=func.now())

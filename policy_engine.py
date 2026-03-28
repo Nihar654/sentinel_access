@@ -1,7 +1,6 @@
 from sqlalchemy.orm import Session
-from db_models import UserDB, PolicyDB, AuditLogDB
+from db_models import UserDB, PolicyDB, AuditLogDB, BlacklistDB
 from models import User, AccessRequest, AccessDecision
-import json
 
 RISK_KEYWORDS = {
     "high":   ["launch", "strike", "destroy", "override", "disable", "bypass"],
@@ -31,24 +30,67 @@ def score_prompt_risk(prompt: str) -> tuple[int, list[str]]:
             score += 5
     return min(score, 100), flags
 
-def log_decision(db: Session, request: AccessRequest, decision: AccessDecision):
+def get_expected_decision(db: Session, request: AccessRequest) -> str:
+    user   = get_user(db, request.user_id)
+    policy = get_policy(db, request.resource) if request.resource else None
+
+    if not user:
+        return "DENY"
+
+    risk_score, _ = score_prompt_risk(request.prompt)
+
+    if policy:
+        if user.clearance_level < policy.min_clearance:
+            return "DENY"
+        if not any(r in user.roles for r in policy.required_roles):
+            return "DENY"
+        if policy.required_mission and (
+            not request.mission_context or
+            request.mission_context not in user.assigned_missions
+        ):
+            return "DENY"
+
+    if risk_score >= 60:
+        return "ESCALATE"
+
+    return "ALLOW"
+
+def log_decision(db: Session, request: AccessRequest, decision: AccessDecision, expected: str):
     entry = AuditLogDB(
-        user_id=request.user_id,
-        prompt=request.prompt,
-        resource=request.resource,
-        mission_context=request.mission_context,
-        decision=decision.decision,
-        explanation=decision.explanation,
-        risk_score=decision.risk_score,
-        confidence=decision.confidence,
-        audit_flags=decision.audit_flags
+        user_id           = request.user_id,
+        prompt            = request.prompt,
+        resource          = request.resource,
+        mission_context   = request.mission_context,
+        decision          = decision.decision,
+        explanation       = decision.explanation,
+        risk_score        = decision.risk_score,
+        confidence        = decision.confidence,
+        audit_flags       = decision.audit_flags,
+        expected_decision = expected
     )
     db.add(entry)
     db.commit()
 
+    update_strike(db, request.user_id, decision.risk_score)
+
 def evaluate_access(db: Session, request: AccessRequest) -> AccessDecision:
     audit_flags = []
-    user = get_user(db, request.user_id)
+    expected    = get_expected_decision(db, request)
+    user        = get_user(db, request.user_id)
+
+    blacklist_entry = get_blacklist_entry(db, request.user_id)
+    if blacklist_entry and blacklist_entry.blacklisted:
+        decision = AccessDecision(
+            user_id=request.user_id,
+            decision="DENY",
+            explanation=f"User '{request.user_id}' is blacklisted after 3 high-risk strikes. "
+                        f"All access permanently revoked pending review.",
+            risk_score=100,
+            confidence=100,
+            audit_flags=["BLACKLISTED USER"]
+        )
+        log_decision(db, request, decision, expected)
+        return decision
 
     if not user:
         decision = AccessDecision(
@@ -59,7 +101,7 @@ def evaluate_access(db: Session, request: AccessRequest) -> AccessDecision:
             confidence=99,
             audit_flags=["Unknown user ID"]
         )
-        log_decision(db, request, decision)
+        log_decision(db, request, decision, expected)
         return decision
 
     risk_score, prompt_flags = score_prompt_risk(request.prompt)
@@ -84,7 +126,7 @@ def evaluate_access(db: Session, request: AccessRequest) -> AccessDecision:
                     confidence=95,
                     audit_flags=audit_flags
                 )
-                log_decision(db, request, decision)
+                log_decision(db, request, decision, expected)
                 return decision
 
             if not any(r in user.roles for r in policy.required_roles):
@@ -99,7 +141,7 @@ def evaluate_access(db: Session, request: AccessRequest) -> AccessDecision:
                     confidence=95,
                     audit_flags=audit_flags
                 )
-                log_decision(db, request, decision)
+                log_decision(db, request, decision, expected)
                 return decision
 
             if policy.required_mission and (
@@ -117,7 +159,7 @@ def evaluate_access(db: Session, request: AccessRequest) -> AccessDecision:
                     confidence=90,
                     audit_flags=audit_flags + ["Mission context mismatch"]
                 )
-                log_decision(db, request, decision)
+                log_decision(db, request, decision, expected)
                 return decision
 
     if risk_score >= 60:
@@ -132,7 +174,7 @@ def evaluate_access(db: Session, request: AccessRequest) -> AccessDecision:
             confidence=80,
             audit_flags=audit_flags
         )
-        log_decision(db, request, decision)
+        log_decision(db, request, decision, expected)
         return decision
 
     decision = AccessDecision(
@@ -143,5 +185,24 @@ def evaluate_access(db: Session, request: AccessRequest) -> AccessDecision:
         confidence=95,
         audit_flags=audit_flags
     )
-    log_decision(db, request, decision)
+    log_decision(db, request, decision, expected)
     return decision
+
+def get_blacklist_entry(db: Session, user_id: str) -> BlacklistDB | None:
+    return db.query(BlacklistDB).filter(BlacklistDB.user_id == user_id).first()
+
+def update_strike(db: Session, user_id: str, risk_score: int):
+    if risk_score < 60:
+        return
+
+    entry = get_blacklist_entry(db, user_id)
+
+    if not entry:
+        entry = BlacklistDB(user_id=user_id, strike_count=1, blacklisted=0)
+        db.add(entry)
+    else:
+        entry.strike_count += 1
+        if entry.strike_count >= 3:
+            entry.blacklisted = 1
+
+    db.commit()
